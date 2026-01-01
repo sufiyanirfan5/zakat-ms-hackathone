@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import logo from '../assets/logo.png';
-import { db } from '../firebaseConfig';
-import { collection, getDocs, addDoc, serverTimestamp, query, orderBy } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import { Heart, Target, Calendar, Plus, Loader2, Search, Filter, ArrowRight } from 'lucide-react';
 
@@ -11,6 +9,8 @@ export default function Campaigns() {
     const [loading, setLoading] = useState(true);
     const [showCreate, setShowCreate] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
+    const API_URL = 'https://zakat-ms-backend-t43v.onrender.com/api';
+
     const [newCampaign, setNewCampaign] = useState({
         title: '',
         description: '',
@@ -23,9 +23,11 @@ export default function Campaigns() {
     const fetchCampaigns = async () => {
         try {
             setLoading(true);
-            const q = query(collection(db, 'campaigns'), orderBy('createdAt', 'desc'));
-            const snap = await getDocs(q);
-            setCampaigns(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+            const response = await fetch(`${API_URL}/campaigns`);
+            const data = await response.json();
+            if (response.ok) {
+                setCampaigns(data);
+            }
         } catch (err) {
             console.error('Error fetching campaigns', err);
         } finally {
@@ -40,14 +42,27 @@ export default function Campaigns() {
     const handleCreate = async (e) => {
         e.preventDefault();
         try {
-            await addDoc(collection(db, 'campaigns'), {
-                ...newCampaign,
-                goalAmount: parseFloat(newCampaign.goalAmount),
-                createdAt: serverTimestamp()
+            const token = localStorage.getItem('token');
+            const response = await fetch(`${API_URL}/campaigns`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    ...newCampaign,
+                    goalAmount: parseFloat(newCampaign.goalAmount)
+                })
             });
-            setShowCreate(false);
-            setNewCampaign({ title: '', description: '', goalAmount: '', deadline: '', raisedAmount: 0, category: 'General' });
-            fetchCampaigns();
+
+            if (response.ok) {
+                setShowCreate(false);
+                setNewCampaign({ title: '', description: '', goalAmount: '', deadline: '', raisedAmount: 0, category: 'General' });
+                fetchCampaigns();
+            } else {
+                const data = await response.json();
+                alert(`Failed: ${data.error}`);
+            }
         } catch (err) {
             console.error('Create campaign failed', err);
         }
@@ -161,7 +176,7 @@ export default function Campaigns() {
                         {filteredCampaigns.map((camp) => {
                             const progress = Math.min((camp.raisedAmount / camp.goalAmount) * 100, 100);
                             return (
-                                <div key={camp.id} className="card-premium group overflow-hidden flex flex-col hover:border-primary/20">
+                                <div key={camp._id} className="card-premium group overflow-hidden flex flex-col hover:border-primary/20">
                                     <div className="h-48 bg-slate-50 relative overflow-hidden">
                                         <Heart className="absolute -right-4 -bottom-4 w-32 h-32 text-slate-200 group-hover:text-primary/5 group-hover:scale-110 transition-all duration-700" />
                                         <div className="absolute inset-0 p-8">
@@ -203,7 +218,7 @@ export default function Campaigns() {
                                                 <div>
                                                     <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest">Limit</p>
                                                     <p className="text-sm font-black text-slate-700 tracking-tight">
-                                                        {camp.deadline?.toDate ? camp.deadline.toDate().toLocaleDateString('en-US', { day: '2-digit', month: 'short' }) : camp.deadline}
+                                                        {new Date(camp.deadline).toLocaleDateString('en-US', { day: '2-digit', month: 'short' })}
                                                     </p>
                                                 </div>
                                             </div>

@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { db } from '../firebaseConfig';
-import { collection, addDoc, query, where, getDocs, orderBy, serverTimestamp } from 'firebase/firestore';
 import { PlusCircle, History, DollarSign, Download, Clock, CheckCircle, Package, Heart, GraduationCap, Stethoscope, Loader2 } from 'lucide-react';
 import logo from '../assets/logo.png';
 import { jsPDF } from 'jspdf';
@@ -12,11 +10,12 @@ export default function Dashboard() {
     const [donations, setDonations] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
+    const API_URL = 'https://zakat-ms-backend-t43v.onrender.com/api';
 
     const [formData, setFormData] = useState({
         amount: '',
         type: 'Zakat',
-        category: 'General',
+        category: 'General Fund',
         paymentMethod: 'Online',
         campaignId: 'General',
         campaignName: 'General'
@@ -24,14 +23,18 @@ export default function Dashboard() {
 
     const fetchDonations = async () => {
         try {
-            const q = query(
-                collection(db, 'donations'),
-                where('userId', '==', user.uid),
-                orderBy('date', 'desc')
-            );
-            const querySnapshot = await getDocs(q);
-            const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setDonations(data);
+            const token = localStorage.getItem('token');
+            const response = await fetch(`${API_URL}/donations`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            const data = await response.json();
+            if (response.ok) {
+                setDonations(data);
+            } else {
+                console.error('Error fetching donations:', data.error);
+            }
         } catch (err) {
             console.error('Error fetching donations', err);
         } finally {
@@ -40,30 +43,43 @@ export default function Dashboard() {
     };
 
     useEffect(() => {
-        fetchDonations();
+        if (user) {
+            fetchDonations();
+        }
     }, [user]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
-            await addDoc(collection(db, 'donations'), {
-                userId: user.uid,
-                userName: user.displayName,
-                amount: parseFloat(formData.amount),
-                type: formData.type,
-                category: formData.category,
-                paymentMethod: formData.paymentMethod,
-                campaignId: formData.campaignId,
-                campaignName: formData.campaignName,
-                date: serverTimestamp(),
-                status: 'Pending'
+            const token = localStorage.getItem('token');
+            const response = await fetch(`${API_URL}/donations`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    amount: parseFloat(formData.amount),
+                    type: formData.type,
+                    category: formData.category,
+                    paymentMethod: formData.paymentMethod,
+                    campaignId: formData.campaignId,
+                    campaignName: formData.campaignName
+                })
             });
-            setShowForm(false);
-            setFormData({ ...formData, amount: '' });
-            fetchDonations();
-            alert('Donation submitted successfully! It will appear in your history soon.');
+
+            if (response.ok) {
+                setShowForm(false);
+                setFormData({ ...formData, amount: '' });
+                fetchDonations();
+                alert('Donation submitted successfully! It will appear in your history soon.');
+            } else {
+                const data = await response.json();
+                alert(`Donation failed: ${data.error}`);
+            }
         } catch (err) {
             console.error('Donation failed', err);
+            alert('Donation failed. Please try again.');
         }
     };
 
@@ -330,7 +346,7 @@ export default function Dashboard() {
                                                     <Clock className="w-4 h-4 text-slate-400" />
                                                 </div>
                                                 <span className="text-sm font-bold text-slate-600 tracking-tight">
-                                                    {d.date?.toDate ? d.date.toDate().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Processing...'}
+                                                    {new Date(d.createdAt).toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })}
                                                 </span>
                                             </div>
                                         </td>

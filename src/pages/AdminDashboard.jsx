@@ -1,6 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { db } from '../firebaseConfig';
-import { collection, query, getDocs, orderBy, updateDoc, doc, where } from 'firebase/firestore';
 import { LayoutDashboard, Users, Heart, CheckCircle, Search, Filter, ArrowUpRight, TrendingUp } from 'lucide-react';
 
 export default function AdminDashboard() {
@@ -9,17 +7,26 @@ export default function AdminDashboard() {
     const [loading, setLoading] = useState(true);
     const [filterStatus, setFilterStatus] = useState('All');
     const [searchTerm, setSearchTerm] = useState('');
+    const API_URL = 'https://zakat-ms-backend-t43v.onrender.com/api';
 
     const fetchData = async () => {
         try {
             setLoading(true);
+            const token = localStorage.getItem('token');
+
             // Fetch all donations
-            const donationsSnap = await getDocs(query(collection(db, 'donations'), orderBy('date', 'desc')));
-            setDonations(donationsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+            const donationsRes = await fetch(`${API_URL}/admin/donations`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const donationsData = await donationsRes.json();
+            if (donationsRes.ok) setDonations(donationsData);
 
             // Fetch all users/donors
-            const usersSnap = await getDocs(collection(db, 'users'));
-            setDonors(usersSnap.docs.map(u => ({ id: u.id, ...u.data() })));
+            const usersRes = await fetch(`${API_URL}/admin/users`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const usersData = await usersRes.json();
+            if (usersRes.ok) setDonors(usersData);
         } catch (err) {
             console.error('Error fetching admin data', err);
         } finally {
@@ -33,10 +40,17 @@ export default function AdminDashboard() {
 
     const verifyDonation = async (donationId) => {
         try {
-            await updateDoc(doc(db, 'donations', donationId), {
-                status: 'Verified'
+            const token = localStorage.getItem('token');
+            const response = await fetch(`${API_URL}/admin/donations/${donationId}/verify`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
             });
-            fetchData();
+            if (response.ok) {
+                fetchData();
+            } else {
+                const data = await response.json();
+                alert(`Verification failed: ${data.error}`);
+            }
         } catch (err) {
             console.error('Verification failed', err);
         }
@@ -143,8 +157,8 @@ export default function AdminDashboard() {
                                 <tr><td colSpan="6" className="px-6 py-8 text-center text-gray-500">No matching records found.</td></tr>
                             ) : (
                                 filteredDonations.map((d) => (
-                                    <tr key={d.id} className="hover:bg-gray-50 transition-colors">
-                                        <td className="px-6 py-4 font-medium text-gray-900">{d.userName}</td>
+                                    <tr key={d._id} className="hover:bg-gray-50 transition-colors">
+                                        <td className="px-6 py-4 font-medium text-gray-900">{d.donorId?.name || 'Unknown'}</td>
                                         <td className="px-6 py-4 text-sm text-gray-600">{d.type}</td>
                                         <td className="px-6 py-4 font-bold text-gray-900">Rs. {d.amount.toLocaleString()}</td>
                                         <td className="px-6 py-4 text-sm text-gray-600">{d.paymentMethod}</td>
@@ -156,7 +170,7 @@ export default function AdminDashboard() {
                                         <td className="px-6 py-4 text-right">
                                             {d.status === 'Pending' && (
                                                 <button
-                                                    onClick={() => verifyDonation(d.id)}
+                                                    onClick={() => verifyDonation(d._id)}
                                                     className="text-xs bg-primary/10 text-primary px-3 py-1.5 rounded-lg hover:bg-primary hover:text-white transition-all font-bold"
                                                 >
                                                     Verify Now

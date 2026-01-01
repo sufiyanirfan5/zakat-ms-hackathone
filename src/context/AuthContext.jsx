@@ -1,15 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import {
-    onAuthStateChanged,
-    signInWithEmailAndPassword,
-    createUserWithEmailAndPassword,
-    signOut,
-    updateProfile
-} from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { auth, db } from '../firebaseConfig';
 
 const AuthContext = createContext();
+const API_URL = 'https://zakat-ms-backend-t43v.onrender.com/api';
 
 export function useAuth() {
     return useContext(AuthContext);
@@ -21,53 +13,56 @@ export function AuthProvider({ children }) {
     const [loading, setLoading] = useState(true);
 
     async function signup(email, password, firstName, lastName, phone) {
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        const user = userCredential.user;
-
-        const fullName = `${firstName} ${lastName}`;
-        await updateProfile(user, { displayName: fullName });
-
-        // Create user profile in Firestore
-        await setDoc(doc(db, 'users', user.uid), {
-            firstName,
-            lastName,
-            name: fullName,
-            email,
-            phone,
-            role: 'user', // Default role
-            createdAt: new Date().toISOString()
+        const response = await fetch(`${API_URL}/auth/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password, firstName, lastName, phone })
         });
 
-        return user;
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Signup failed');
+
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data));
+        setUser(data);
+        setUserRole(data.role);
+        return data;
     }
 
-    function login(email, password) {
-        return signInWithEmailAndPassword(auth, email, password);
+    async function login(email, password) {
+        const response = await fetch(`${API_URL}/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+        });
+
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Login failed');
+
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data));
+        setUser(data);
+        setUserRole(data.role);
+        return data;
     }
 
     function logout() {
-        return signOut(auth);
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        setUser(null);
+        setUserRole(null);
     }
 
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-            if (currentUser) {
-                setUser(currentUser);
-                // Fetch role from Firestore
-                const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
-                if (userDoc.exists()) {
-                    setUserRole(userDoc.data().role);
-                } else {
-                    setUserRole('user');
-                }
-            } else {
-                setUser(null);
-                setUserRole(null);
-            }
-            setLoading(false);
-        });
+        const storedUser = localStorage.getItem('user');
+        const token = localStorage.getItem('token');
 
-        return unsubscribe;
+        if (storedUser && token) {
+            const parsedUser = JSON.parse(storedUser);
+            setUser(parsedUser);
+            setUserRole(parsedUser.role);
+        }
+        setLoading(false);
     }, []);
 
     const value = {
